@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor Financiero PWA + Gemini AI</title>
+    <meta name="description" content="Monitor de noticias financieras con glosario inteligente y análisis AI.">
+    <meta name="theme-color" content="#0f172a">
+
+    <!-- 
+    ============================================================================
+    RESUMEN DE CARACTERÍSTICAS
+    ============================================================================
+    1.  Agregador de Noticias: Soporta NewsAPI y RSS.
+    2.  Análisis de Texto: Detección híbrida (Regex rápido + IA profunda).
+    3.  ✨ GEMINI AI INTEGRATION:
+        - Visión Global: Sentimiento de mercado.
+        - Inspector: Resumen, Sentimiento y GLOSARIO DINÁMICO.
+    4.  PWA: Manifest y Service Worker.
+    5.  Persistencia: localStorage robusto para claves.
+    6.  Buscador Global: Busca en Google News RSS si no hay resultados locales.
+    
+    DESPLIEGUE:
+    - Guarda como index.html.
+    - Abre en navegador.
+    - Ve a Configuración (⚙️) e introduce tu GEMINI API KEY.
+    ============================================================================
+    -->
+
+    <!-- ESTILOS CSS -->
+    <style>
+        :root {
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --primary: #2563eb;
+            --accent: #0f172a;
+            --border: #e2e8f0;
+            --highlight: #fef08a;
+            --ai-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            --modal-overlay: rgba(15, 23, 42, 0.7);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-body: #0f172a;
+                --bg-card: #1e293b;
+                --text-main: #f1f5f9;
+                --text-muted: #94a3b8;
+                --primary: #3b82f6;
+                --accent: #f8fafc;
+                --border: #334155;
+                --highlight: #854d0e;
+            }
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Layout */
+        header {
+            background-color: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        h1 { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--primary); display: flex; align-items: center; gap: 0.5rem; }
+        .subtitle { font-size: 0.75rem; color: var(--text-muted); }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        /* Buscador */
+        .search-box {
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            border: 1px solid var(--border);
+            border-radius: 2rem;
+            font-size: 1rem;
+            background: var(--bg-card);
+            color: var(--text-main);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            outline: none;
+            box-sizing: border-box; 
+        }
+        .search-input:focus { border-color: var(--primary); }
+        .search-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            fill: var(--text-muted);
+            pointer-events: none;
+        }
+
+        /* Botones e Iconos */
+        button {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        button:hover { background-color: var(--border); }
+        button.primary { background-color: var(--primary); color: white; border: none; }
+        button.primary:hover { opacity: 0.9; }
+        
+        /* Botones AI con gradiente */
+        button.ai-btn {
+            background: var(--ai-gradient);
+            color: white;
+            border: none;
+            font-weight: 600;
+        }
+        button.ai-btn:hover { filter: brightness(1.1); box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4); }
+
+        .icon { width: 20px; height: 20px; fill: currentColor; }
+
+        /* Lista de Noticias */
+        .news-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 1rem; }
+        
+        .news-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .news-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        
+        .meta { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+        .tag { background: var(--primary); color: white; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: bold; }
+        .relevance { color: var(--primary); font-weight: 600; font-size: 0.75rem; margin-top: 0.5rem; display: block;}
+
+        .news-title { font-size: 1.1rem; font-weight: 600; margin: 0 0 0.5rem 0; line-height: 1.4; }
+        .news-summary { font-size: 0.9rem; color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+        /* Vistas Modales */
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--modal-overlay);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: flex-end;
+        }
+        .modal.active { display: flex; }
+        @media(min-width: 640px) { .modal { align-items: center; } }
+
+        .modal-content {
+            background: var(--bg-card);
+            width: 100%;
+            max-width: 700px;
+            max-height: 90vh;
+            border-radius: 1rem 1rem 0 0;
+            padding: 1.5rem;
+            overflow-y: auto;
+            position: relative;
+            animation: slideUp 0.3s ease-out;
+            display: flex;
+            flex-direction: column;
+        }
+        @media(min-width: 640px) { .modal-content { border-radius: 1rem; height: auto; max-height: 85vh; } }
+
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+        .close-btn { 
+            position: absolute; top: 1rem; right: 1rem; 
+            border: none; font-size: 1.5rem; padding: 0.2rem 0.5rem; 
+            background: rgba(0,0,0,0.05); border-radius: 50%; width: 40px; height: 40px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; z-index: 10;
+        }
+        .close-btn:hover { background: rgba(0,0,0,0.1); }
+
+        /* Estilos Artículo Completo */
+        .article-body { font-size: 1.05rem; line-height: 1.8; margin-bottom: 2rem; white-space: pre-wrap; }
+        .highlight-term { background-color: var(--highlight); padding: 0 2px; border-radius: 2px; font-weight: 700; cursor: help; border-bottom: 1px dashed var(--text-muted); }
+        
+        .glossary-section {
+            background: var(--bg-body);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border-left: 4px solid var(--primary);
+            margin-top: 2rem;
+        }
+        .glossary-title { font-weight: bold; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        .glossary-item { margin-bottom: 0.75rem; font-size: 0.9rem; }
+        .glossary-term { font-weight: 700; color: var(--primary); }
+
+        /* Sección AI Result dentro de la noticia */
+        .ai-analysis-box {
+            background: #f3e8ff; /* Light Purple bg */
+            border: 1px solid #d8b4fe;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            color: #4c1d95;
+            display: none; /* Oculto por defecto */
+        }
+        .dark .ai-analysis-box { background: #2e1065; border-color: #581c87; color: #e9d5ff; } /* Dark mode support */
+
+        .ai-title { font-weight: bold; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; color: #7e22ce; }
+        .dark .ai-title { color: #d8b4fe; }
+
+        /* Panel Configuración */
+        .config-group { margin-bottom: 1rem; }
+        .config-group label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+        .config-input { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 0.25rem; background: var(--bg-body); color: var(--text-main); }
+        .source-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+
+        /* Utilidades */
+        .hidden { display: none !important; }
+        .loader { text-align: center; padding: 2rem; color: var(--text-muted); }
+        .status-bar { font-size: 0.75rem; text-align: center; padding: 0.5rem; background: var(--bg-card); color: var(--text-muted); border-top: 1px solid var(--border); }
+        
+        /* Notificación Toast */
+        .toast {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--text-main); color: var(--bg-card);
+            padding: 0.75rem 1.5rem; border-radius: 2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            font-size: 0.9rem; z-index: 200;
+            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+        }
+        .toast.show { opacity: 1; }
+
+        /* CORRECCIÓN: Estilo específico para modal de Visión Global */
+        /* Asegura texto oscuro sobre fondo claro, incluso en modo oscuro */
+        #ai-global-content, #ai-global-modal .article-body, #ai-global-modal h2 {
+            color: #1e293b !important;
+        }
+    </style>
+
+    <!-- GENERACIÓN DINÁMICA DE MANIFEST PARA PWA (Data URI hack para single file) -->
+    <script>
+        const manifest = {
+            "name": "Monitor Financiero AI",
+            "short_name": "FinanzasAI",
+            "start_url": ".",
+            "display": "standalone",
+            "background_color": "#0f172a",
+            "theme_color": "#0f172a",
+            "icons": [
+                {
+                    "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%236366f1'/%3E%3Cpath d='M368 128h80v256h-80v-256zM216 208h80v176h-80v-176zM64 288h80v96h-80v-96z' fill='white'/%3E%3C/svg%3E",
+                    "sizes": "192x192",
+                    "type": "image/svg+xml"
+                }
+            ]
+        };
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(manifest));
+        document.head.appendChild(link);
+    </script>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+    <div>
+        <h1>Finanzas AI</h1>
+        <div class="subtitle" id="last-update">Sin datos</div>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+        <!-- Botón AI Visión Global -->
+        <button onclick="gemini.analyzeMarket()" class="ai-btn" aria-label="Visión Global del Mercado">
+            ✨ Visión Global
+        </button>
+        <button onclick="app.refreshFeed()" aria-label="Actualizar">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+        </button>
+        <button onclick="ui.toggleSettings()" aria-label="Configuración">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L3.15 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.58 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        </button>
+    </div>
+</header>
+
+<!-- CONTENIDO PRINCIPAL -->
+<main class="container">
+    <!-- Buscador -->
+    <div class="search-box">
+        <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input type="text" id="search-input" class="search-input" placeholder="Buscar en internet (Enter para buscar)..." onkeydown="ui.handleSearch(event)">
+    </div>
+
+    <div id="news-container" class="news-list">
+        <div class="loader">Cargando noticias financieras...</div>
+    </div>
+</main>
+
+<!-- FOOTER / STATUS -->
+<footer class="status-bar">
+    <span id="scheduler-status">Próxima sincronización: Calculando...</span>
+</footer>
+
+<!-- MODAL: LECTOR DE NOTICIAS -->
+<div id="reader-modal" class="modal">
+    <div class="modal-content">
+        <button class="close-btn" onclick="ui.closeModal('reader-modal')">&times;</button>
+        <h2 id="reader-title" style="margin-top: 2rem;">Título</h2> <!-- Margin top added for close btn -->
+        <div id="reader-meta" class="meta" style="margin-bottom: 1rem;">Fuente • Fecha</div>
+
+        <!-- Botón AI dentro del modal -->
+        <button id="btn-ai-analyze-article" class="ai-btn" style="width:100%; margin-bottom:1rem; justify-content:center;" onclick="gemini.analyzeArticle()">
+            ✨ Inspector AI: Resumen y Glosario Dinámico
+        </button>
+
+        <!-- Caja de Resultados AI -->
+        <div id="ai-article-result" class="ai-analysis-box">
+            <div class="ai-title">🤖 Análisis Inteligente</div>
+            <div id="ai-article-content">Cargando análisis...</div>
+        </div>
+        
+        <!-- Cuerpo del artículo -->
+        <div id="reader-body" class="article-body"></div>
+        
+        <!-- Glosario Básico (Regex) -->
+        <div id="glossary-container" class="glossary-section hidden">
+            <div class="glossary-title">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/></svg>
+                Glosario Básico
+            </div>
+            <div id="glossary-list"></div>
+        </div>
+        
+        <div style="margin-top: 2rem; text-align: center;">
+            <a id="reader-link" href="#" target="_blank" style="color: var(--primary); font-size: 0.9rem;">Ver fuente original completa &rarr;</a>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: RESULTADOS VISIÓN GLOBAL AI -->
+<div id="ai-global-modal" class="modal">
+    <div class="modal-content" style="background: linear-gradient(to bottom right, #f8fafc, #f3e8ff); min-height: 50vh;">
+        <button class="close-btn" onclick="ui.closeModal('ai-global-modal')" style="background:white; color:#1e293b;">&times;</button>
+        
+        <h2 style="color: #6d28d9; display:flex; align-items:center; gap:0.5rem; margin-top: 1rem;">
+            ✨ Visión Global del Mercado
+        </h2>
+        <div id="ai-global-content" class="article-body" style="font-size:1rem;">
+            <!-- Contenido dinámico aquí -->
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:200px; color:#6d28d9;">
+                <div class="loader" style="color:#6d28d9;">Analizando tendencias actuales...</div>
+            </div>
+        </div>
+        
+        <button class="primary" onclick="ui.closeModal('ai-global-modal')" style="margin-top:auto; align-self:center; width: 100%; max-width: 200px;">Cerrar Informe</button>
+    </div>
+</div>
+
+<!-- MODAL: CONFIGURACIÓN -->
+<div id="settings-modal" class="modal">
+    <div class="modal-content">
+        <button class="close-btn" onclick="ui.closeModal('settings-modal')">&times;</button>
+        <h2 style="margin-top: 1.5rem;">Configuración</h2>
+        
+        <div class="config-group" style="background: #f3e8ff; padding: 10px; border-radius: 6px; border: 1px solid #d8b4fe;">
+            <label style="color: #6b21a8;">✨ Gemini API Key (Requerida)</label>
+            <input type="password" id="conf-gemini-key" class="config-input" placeholder="Pega tu API Key (empieza por AIza...)">
+            <small style="color: var(--text-muted);">Gestiona tu clave en <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.</small>
+        </div>
+
+        <div class="config-group">
+            <label>API Key de NewsAPI (Opcional)</label>
+            <input type="password" id="conf-apikey" class="config-input" placeholder="Pega tu API Key de newsapi.org...">
+            <small style="color: var(--text-muted);">Sin API Key, la app usará RSS públicos.</small>
+        </div>
+
+        <div class="config-group">
+            <label>Fuentes RSS Activas</label>
+            <div id="sources-list"></div>
+        </div>
+
+        <div class="config-group">
+            <label>Notificaciones</label>
+            <button onclick="notifications.request()" style="width: 100%; margin-bottom: 0.5rem;">Activar Permisos</button>
+            <button onclick="notifications.test()" style="width: 100%;">Probar Notificación</button>
+        </div>
+        
+        <button class="primary" type="button" onclick="config.saveFromUI()" style="width: 100%; margin-top: 1rem; font-weight:bold;">💾 Guardar Configuración</button>
+    </div>
+</div>
+
+<div id="toast" class="toast">Mensaje</div>
+
+<!-- JAVASCRIPT PRINCIPAL -->
+<script>
+/**
+ * 1. DICCIONARIO FINANCIERO (BASE FIJA)
+ * Se usa para resaltar términos comunes rápidamente.
+ */
+const FINANCIAL_TERMS = {
+    "EBITDA": "Beneficio bruto antes de deducibles.",
+    "Yield": "Rentabilidad de una inversión (%)",
+    "Short selling": "Apostar a que el precio baja.",
+    "Venta en corto": "Apostar a que el precio baja.",
+    "CDS": "Seguro contra impagos.",
+    "BCE": "Banco Central Europeo.",
+    "Fed": "Reserva Federal (EEUU).",
+    "Bull market": "Mercado alcista (sube).",
+    "Bear market": "Mercado bajista (baja).",
+    "IPO": "Salida a bolsa.",
+    "Default": "Impago."
+};
+
+/**
+ * 2. CONFIGURACIÓN Y ESTADO
+ */
+const config = {
+    apiKey: localStorage.getItem('fin_apikey') || '',
+    geminiKey: localStorage.getItem('fin_gemini_key') || '',
+    sources: JSON.parse(localStorage.getItem('fin_sources')) || [
+        { name: "Reuters Business", url: "https://feeds.reuters.com/reuters/businessNews", enabled: true, type: 'rss' },
+        { name: "Financial Times", url: "https://www.ft.com/?format=rss", enabled: true, type: 'rss' },
+        { name: "CNBC", url: "https://www.cnbc.com/id/10000664/device/rss/rss.html", enabled: true, type: 'rss' },
+        { name: "El Economista (ES)", url: "https://www.eleconomista.es/rss/rss-portada.php", enabled: true, type: 'rss' },
+        { name: "Investing.com", url: "https://es.investing.com/rss/news.rss", enabled: true, type: 'rss' }
+    ],
+    lastUpdate: parseInt(localStorage.getItem('fin_last_update')) || 0,
+    
+    saveFromUI: () => {
+        const keyInput = document.getElementById('conf-apikey');
+        const geminiInput = document.getElementById('conf-gemini-key');
+        
+        if(keyInput && geminiInput) {
+            const newNewsKey = keyInput.value.trim();
+            const newGeminiKey = geminiInput.value.trim();
+
+            localStorage.setItem('fin_apikey', newNewsKey);
+            localStorage.setItem('fin_gemini_key', newGeminiKey);
+            
+            // Actualizar variables en memoria
+            config.apiKey = newNewsKey;
+            config.geminiKey = newGeminiKey;
+
+            ui.showToast('¡Configuración guardada correctamente!');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alert("Error al acceder a los campos de configuración.");
+        }
+    }
+};
+
+/**
+ * 3. GEMINI AI MODULE
+ */
+const gemini = {
+    currentArticleText: "", 
+
+    callAPI: async (prompt) => {
+        if (!config.geminiKey) {
+            throw new Error("Falta la API Key de Gemini. Configúrala en ajustes.");
+        }
+        
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${config.geminiKey}`;
+        
+        const payload = {
+            contents: [{ parts: [{ text: prompt }] }]
+        };
+
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(`Error API (${response.status}): ${errData.error?.message || 'Desconocido'}`);
+            }
+            
+            const data = await response.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar respuesta.";
+        } catch (e) {
+            console.error(e);
+            throw e; // Propagar error para manejo en UI
+        }
+    },
+
+    analyzeArticle: async () => {
+        const resultBox = document.getElementById('ai-article-result');
+        const contentBox = document.getElementById('ai-article-content');
+        
+        resultBox.style.display = 'block';
+        contentBox.innerHTML = '<div class="loader" style="padding:0">🔍 Analizando noticia y detectando términos complejos...</div>';
+        
+        const prompt = `
+            Actúa como un experto analista financiero. Analiza el siguiente texto de noticia:
+            "${gemini.currentArticleText.substring(0, 4000)}"
+            
+            Genera una respuesta en formato HTML (sin markdown fences). Estructura:
+            
+            <p><b>Resumen Ejecutivo:</b> [Resumen de 2 líneas]</p>
+            <p><b>Sentimiento:</b> [Alcista 🐂 / Bajista 🐻 / Neutral 😐]</p>
+            <hr style="margin: 10px 0; border:0; border-top:1px solid #d8b4fe;">
+            <p><b>Glosario de Conceptos Clave en este texto:</b></p>
+            <ul style="padding-left: 20px; margin:0;">
+                <li><b>[Concepto 1]:</b> [Definición muy breve y sencilla para principiantes]</li>
+                <li><b>[Concepto 2]:</b> [Definición muy breve]</li>
+            </ul>
+        `;
+
+        try {
+            const response = await gemini.callAPI(prompt);
+            const cleanResponse = response.replace(/```html/g, '').replace(/```/g, '');
+            contentBox.innerHTML = cleanResponse;
+        } catch (error) {
+            contentBox.innerHTML = `<p style="color: #dc2626;">Error: ${error.message}</p>`;
+            if(error.message.includes("API Key") || error.message.includes("400")) {
+                ui.showToast("Revisa tu API Key en configuración");
+                setTimeout(() => ui.toggleSettings(), 1500);
+            }
+        }
+    },
+
+    analyzeMarket: async () => {
+        const news = JSON.parse(localStorage.getItem('fin_cache_news') || '[]');
+        if (news.length === 0) return ui.showToast("No hay noticias cargadas para analizar.");
+
+        const headlines = news.slice(0, 20).map(n => `- ${n.title}`).join('\n');
+        
+        document.getElementById('ai-global-modal').classList.add('active');
+        const contentBox = document.getElementById('ai-global-content');
+        // Reset content to loader
+        contentBox.innerHTML = '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:200px; color:#6d28d9;"><div class="loader" style="color:#6d28d9;">✨ Gemini está leyendo el mercado...</div></div>';
+
+        const prompt = `
+            Eres un estratega de mercado senior. Lee estos titulares:
+            ${headlines}
+            
+            Genera un "Informe de Apertura" breve en HTML:
+            <h3>Sentimiento: [Emoji]</h3>
+            <p>[Resumen de la situación global en 3 frases]</p>
+            <p><b>Oportunidades / Riesgos:</b> [Puntos clave]</p>
+        `;
+
+        try {
+            const response = await gemini.callAPI(prompt);
+            const cleanResponse = response.replace(/```html/g, '').replace(/```/g, '');
+            contentBox.innerHTML = cleanResponse;
+        } catch (error) {
+            contentBox.innerHTML = `<p style="color: #dc2626; padding: 1rem;">Error: ${error.message}</p>`;
+            if(error.message.includes("API Key")) {
+                setTimeout(() => ui.toggleSettings(), 1500);
+            }
+        }
+    }
+};
+
+/**
+ * 4. LÓGICA DE NOTIFICACIONES
+ */
+const notifications = {
+    init: () => {
+        if ("Notification" in window) notifications.scheduleCheck();
+    },
+    request: () => {
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") ui.showToast("Notificaciones activadas");
+        });
+    },
+    test: () => {
+        if (Notification.permission === "granted") {
+            new Notification("Finanzas PWA", { body: "Prueba de notificación exitosa." });
+        } else {
+            alert("Habilita los permisos primero.");
+        }
+    },
+    scheduleCheck: () => {
+        setInterval(() => {
+            const now = new Date();
+            const options = { timeZone: "Europe/Madrid", hour: 'numeric', minute: 'numeric', hour12: false };
+            const timeString = new Intl.DateTimeFormat('es-ES', options).format(now);
+            const [hour, minute] = timeString.split(':').map(Number);
+            const lastDailySummary = localStorage.getItem('fin_daily_summary_date');
+            const todayStr = now.toDateString();
+            
+            if (hour === 8 && minute < 10 && lastDailySummary !== todayStr) {
+                notifications.sendDailySummary();
+                localStorage.setItem('fin_daily_summary_date', todayStr);
+            }
+        }, 60000);
+    },
+    sendDailySummary: () => {
+        const news = JSON.parse(localStorage.getItem('fin_cache_news') || '[]');
+        if (news.length === 0) return;
+        const top5 = news.slice(0, 5).map(n => `- ${n.title}`).join('\n');
+        if (Notification.permission === "granted") {
+            new Notification("Resumen Financiero 08:00", { body: top5 });
+        }
+    }
+};
+
+/**
+ * 5. MOTOR DE DATOS
+ */
+const fetcher = {
+    // Función de búsqueda global
+    searchAll: async (query) => {
+        ui.showLoader(true);
+        // Limpiar para búsqueda nueva
+        document.getElementById('news-container').innerHTML = `<div class="loader">Buscando "${query}" en internet y fuentes...</div>`;
+        
+        let allNews = [];
+        
+        // 1. NewsAPI Search
+        if (config.apiKey) {
+            try {
+                // NewsAPI endpoint de búsqueda
+                const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=es&sortBy=publishedAt&pageSize=15&apiKey=${config.apiKey}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if(data.articles) {
+                    const mapped = data.articles.map(a => ({
+                        title: a.title,
+                        url: a.url,
+                        source: a.source.name,
+                        date: a.publishedAt,
+                        summary: a.description || "",
+                        content: a.content,
+                        type: 'api_search'
+                    }));
+                    allNews = [...allNews, ...mapped];
+                }
+            } catch(e) { console.error("NewsAPI Search Error", e); }
+        }
+        
+        // 2. Google News RSS Search (Fallback fiable)
+        try {
+            // Google News RSS permite búsquedas directas
+            const googleUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=es-ES&gl=ES&ceid=ES:es`;
+            const data = await fetcher.rssToJSON(googleUrl);
+            if(data && data.items) {
+                 const mapped = data.items.map(item => ({
+                    title: item.title,
+                    url: item.link,
+                    source: "Google News (" + (item.author || "Web") + ")",
+                    date: item.pubDate,
+                    summary: item.description ? item.description.replace(/<[^>]*>?/gm, '').substring(0, 200) + '...' : '',
+                    content: item.content || item.description,
+                    type: 'rss_search'
+                }));
+                allNews = [...allNews, ...mapped];
+            }
+        } catch(e) { console.error("Google RSS Search Error", e); }
+
+        // Ordenar y mostrar
+        allNews.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        // NO sobrescribimos la caché principal con resultados de búsqueda temporal
+        ui.renderNews(allNews);
+        ui.updateStatus();
+        ui.showLoader(false);
+    },
+
+    rssToJSON: async (url) => {
+        try {
+            // Añadir timestamp para evitar caché agresivo de servidores intermedios
+            const bust = Date.now();
+            const fetchUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}&t=${bust}`;
+            const res = await fetch(fetchUrl);
+            return await res.json();
+        } catch (e) {
+            console.error("RSS Error:", url);
+            return null;
+        }
+    },
+    getNewsAPI: async () => {
+        if (!config.apiKey) return [];
+        try {
+            const url = `https://newsapi.org/v2/top-headlines?category=business&language=es&pageSize=20&apiKey=${config.apiKey}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if(data.status === "error") throw new Error(data.message);
+            
+            return data.articles.map(a => ({
+                title: a.title,
+                url: a.url,
+                source: a.source.name,
+                date: a.publishedAt,
+                summary: a.description || "",
+                content: a.content,
+                type: 'api'
+            }));
+        } catch (e) {
+            console.warn("NewsAPI error (check key):", e.message);
+            return [];
+        }
+    },
+    getAllNews: async () => {
+        ui.showLoader(true);
+        // Limpiar contenedor para efecto visual de refresco
+        document.getElementById('news-container').innerHTML = '<div class="loader">Consultando fuentes en tiempo real...</div>';
+        
+        let allNews = [];
+        
+        // 1. NewsAPI
+        if (config.apiKey) {
+            const apiNews = await fetcher.getNewsAPI();
+            allNews = [...allNews, ...apiNews];
+        }
+        
+        // 2. RSS
+        const rssPromises = config.sources
+            .filter(s => s.enabled && s.type === 'rss')
+            .map(async (source) => {
+                const data = await fetcher.rssToJSON(source.url);
+                if (data && data.items) {
+                    return data.items.map(item => ({
+                        title: item.title,
+                        url: item.link,
+                        source: source.name,
+                        date: item.pubDate,
+                        summary: item.description ? item.description.replace(/<[^>]*>?/gm, '').substring(0, 200) + '...' : '',
+                        content: item.content || item.description,
+                        type: 'rss'
+                    }));
+                }
+                return [];
+            });
+            
+        const rssResults = await Promise.all(rssPromises);
+        rssResults.forEach(arr => allNews = [...allNews, ...arr]);
+        allNews.sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        localStorage.setItem('fin_cache_news', JSON.stringify(allNews));
+        localStorage.setItem('fin_last_update', Date.now());
+        
+        // Limpiar buscador al refrescar
+        document.getElementById('search-input').value = "";
+        
+        ui.renderNews(allNews);
+        ui.updateStatus();
+        ui.showLoader(false);
+    }
+};
+
+/**
+ * 6. UI MANAGER
+ */
+const analyzer = {
+    relevanceKeywords: ['BCE', 'Fed', 'Inflación', 'Tipos', 'Crash', 'Recesión', 'Resultados', 'Dividendo', 'Fusión'],
+    calculateRelevance: (text) => {
+        const found = analyzer.relevanceKeywords.find(k => text.includes(k));
+        return found ? `Relevante por: ${found}` : 'Noticia general';
+    },
+    processText: (text) => {
+        let safeText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        let foundTerms = new Set();
+        Object.keys(FINANCIAL_TERMS).forEach(term => {
+            const regex = new RegExp(`\\b(${term})\\b`, 'gi');
+            if (regex.test(safeText)) {
+                foundTerms.add(term);
+                safeText = safeText.replace(regex, `<span class="highlight-term" onclick="ui.showTooltip('${term}')">$1</span>`);
+            }
+        });
+        return { html: safeText, terms: Array.from(foundTerms) };
+    }
+};
+
+const ui = {
+    showLoader: (show) => {
+        const el = document.querySelector('.loader');
+        if(el) el.style.display = show ? 'block' : 'none';
+    },
+    updateStatus: () => {
+        const ts = parseInt(localStorage.getItem('fin_last_update'));
+        if (!ts) return;
+        const date = new Date(ts);
+        const options = { timeZone: "Europe/Madrid", hour: '2-digit', minute: '2-digit', day: '2-digit' };
+        document.getElementById('last-update').textContent = `Actualizado: ${date.toLocaleString('es-ES', options)}`;
+        
+        const nextSync = new Date(ts + 6 * 60 * 60 * 1000);
+        document.getElementById('scheduler-status').textContent = `Auto-refresh: cada 6h. Próximo: ${nextSync.toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'})}`;
+    },
+    // Función de búsqueda (Handler)
+    handleSearch: (e) => {
+        if (e.key === 'Enter') {
+            const query = e.target.value.trim();
+            if (query.length > 0) {
+                // Si hay texto y pulsa Enter -> Búsqueda Global Real
+                fetcher.searchAll(query);
+            } else {
+                // Si borra y pulsa Enter -> Volver al feed normal
+                const cached = localStorage.getItem('fin_cache_news');
+                if(cached) ui.renderNews(JSON.parse(cached));
+            }
+        } else {
+            // Filtrado local en tiempo real mientras escribe (opcional, o se puede quitar si confunde)
+            const query = e.target.value.trim();
+            if(query.length > 0) ui.filterLocal(query);
+        }
+    },
+    filterLocal: (query) => {
+        const allNews = JSON.parse(localStorage.getItem('fin_cache_news') || '[]');
+        const q = query.toLowerCase();
+        const filtered = allNews.filter(item => 
+            item.title.toLowerCase().includes(q) || 
+            item.summary.toLowerCase().includes(q) ||
+            item.source.toLowerCase().includes(q)
+        );
+        ui.renderNews(filtered);
+    },
+    renderNews: (news) => {
+        const container = document.getElementById('news-container');
+        container.innerHTML = '';
+        if (news.length === 0) {
+            container.innerHTML = '<div style="padding:2rem; text-align:center; color:var(--text-muted)">No hay resultados.</div>';
+            return;
+        }
+        news.forEach((item, index) => {
+            const relevance = analyzer.calculateRelevance(item.title + " " + item.summary);
+            const dateObj = new Date(item.date);
+            // Formato de fecha completo: DD/MM/AAAA HH:MM
+            const fullDateStr = isNaN(dateObj.getTime()) ? '' : dateObj.toLocaleString('es-ES', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+            
+            const card = document.createElement('li');
+            card.className = 'news-card';
+            // Al hacer click, guardamos temporalmente el artículo en memoria si es de búsqueda
+            // para poder abrirlo aunque no esté en caché principal
+            card.onclick = () => {
+                // Guardamos en un "currentNews" temporal
+                ui.tempCurrentArticle = item;
+                ui.openArticle(item);
+            };
+
+            card.innerHTML = `
+                <div class="meta">
+                    <span class="tag">${item.source}</span>
+                    <span>${fullDateStr}</span>
+                </div>
+                <h3 class="news-title">${item.title}</h3>
+                <div class="news-summary">${item.summary}</div>
+                <span class="relevance">${relevance}</span>
+            `;
+            container.appendChild(card);
+        });
+    },
+    openArticle: (itemOrIndex) => {
+        let news;
+        if (typeof itemOrIndex === 'number') {
+            news = JSON.parse(localStorage.getItem('fin_cache_news'))[itemOrIndex];
+        } else {
+            news = itemOrIndex;
+        }
+        
+        if (!news) return;
+
+        document.getElementById('reader-title').textContent = news.title;
+        // Fecha completa también en el lector
+        const dateObj = new Date(news.date);
+        const fullDateStr = isNaN(dateObj.getTime()) ? '' : dateObj.toLocaleString('es-ES', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+        });
+        document.getElementById('reader-meta').textContent = `${news.source} • ${fullDateStr}`;
+        document.getElementById('reader-link').href = news.url;
+
+        let fullText = news.content || news.summary;
+        if (!fullText || fullText.length < 200) {
+             fullText += "\n\n(Texto completo no disponible en RSS. Usa el enlace inferior o el botón 'Inspector AI' para analizar el contenido disponible).";
+        }
+
+        gemini.currentArticleText = `${news.title}. ${fullText}`;
+        
+        document.getElementById('ai-article-result').style.display = 'none';
+        document.getElementById('ai-article-content').innerHTML = '';
+
+        const processed = analyzer.processText(fullText);
+        document.getElementById('reader-body').innerHTML = processed.html;
+
+        const glossaryList = document.getElementById('glossary-list');
+        const glossaryContainer = document.getElementById('glossary-container');
+        glossaryList.innerHTML = '';
+        
+        if (processed.terms.length > 0) {
+            glossaryContainer.classList.remove('hidden');
+            processed.terms.forEach(term => {
+                const def = FINANCIAL_TERMS[Object.keys(FINANCIAL_TERMS).find(k => k.toLowerCase() === term.toLowerCase())];
+                if (def) {
+                    const div = document.createElement('div');
+                    div.className = 'glossary-item';
+                    div.innerHTML = `<span class="glossary-term">${term}:</span> ${def}`;
+                    glossaryList.appendChild(div);
+                }
+            });
+        } else {
+            glossaryContainer.classList.add('hidden');
+        }
+        document.getElementById('reader-modal').classList.add('active');
+    },
+    closeModal: (id) => {
+        document.getElementById(id).classList.remove('active');
+    },
+    toggleSettings: () => {
+        const modal = document.getElementById('settings-modal');
+        if(modal.classList.contains('active')) {
+            modal.classList.remove('active');
+        } else {
+            const kInput = document.getElementById('conf-apikey');
+            const gInput = document.getElementById('conf-gemini-key');
+            if(kInput) kInput.value = config.apiKey;
+            if(gInput) gInput.value = config.geminiKey;
+            
+            const slist = document.getElementById('sources-list');
+            slist.innerHTML = config.sources.map(s => `
+                <div class="source-item">
+                    <span>${s.name}</span>
+                    <span style="font-size:0.8em; color:${s.enabled?'green':'gray'}">${s.enabled?'Activo':'Inactivo'}</span>
+                </div>
+            `).join('');
+            modal.classList.add('active');
+        }
+    },
+    showToast: (msg) => {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 3000);
+    },
+    showTooltip: (term) => {
+        const def = FINANCIAL_TERMS[Object.keys(FINANCIAL_TERMS).find(k => k.toLowerCase() === term.toLowerCase())];
+        if(def) alert(`${term.toUpperCase()}:\n\n${def}`);
+    }
+};
+
+/**
+ * 7. INICIO
+ */
+const app = {
+    init: () => {
+        const cached = localStorage.getItem('fin_cache_news');
+        if (cached) {
+            ui.renderNews(JSON.parse(cached));
+            ui.updateStatus();
+        }
+        const now = Date.now();
+        const last = config.lastUpdate;
+        if (now - last > 21600000 || !cached) { // 6 horas
+            app.refreshFeed();
+        }
+        setInterval(() => {
+            const n = Date.now();
+            if (n - parseInt(localStorage.getItem('fin_last_update')) > 21600000) {
+                app.refreshFeed();
+            }
+        }, 60000);
+        notifications.init();
+        app.registerSW();
+    },
+    refreshFeed: () => {
+        // CORRECCIÓN: Vaciar caché explícitamente para forzar sensación de "nuevo"
+        localStorage.removeItem('fin_cache_news'); 
+        ui.showToast('Actualizando fuentes...');
+        fetcher.getAllNews().then(() => ui.showToast('Noticias actualizadas'));
+    },
+    registerSW: () => {
+        if ('serviceWorker' in navigator) {
+            const swContent = `
+                self.addEventListener('install', (e) => { self.skipWaiting(); });
+                self.addEventListener('fetch', (e) => {
+                    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+                });
+            `;
+            const blob = new Blob([swContent], {type: 'text/javascript'});
+            const swUrl = URL.createObjectURL(blob);
+            navigator.serviceWorker.register(swUrl).catch(err => console.log('SW Fail:', err));
+        }
+    }
+};
+
+window.addEventListener('DOMContentLoaded', app.init);
+
+</script>
+</body>
+</html>
